@@ -16,6 +16,7 @@ from .fm import FMTrainConfig, fm_predict_proba, fm_predict_reg, fm_to_qubo, tra
 from .surrogate import SurrogateObjective
 from .utils import ensure_dir, save_json, set_global_seed, topk_unique, select_diverse_topk, spearmanr_np
 from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
+from .solvers.sa_solver import SASolver, has_sa
 from .solvers.exact_enum_solver import ExactEnumSolver
 
 
@@ -70,6 +71,14 @@ def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
         return ExactEnumSolver(
             max_d=int(cfg.get("max_d", 24)),
             batch_eval=int(cfg.get("batch_eval", 8192)),
+        )
+
+    if kind == "sa":
+        if not has_sa():
+            raise RuntimeError("solver.kind=sa requires 'dimod' and 'dwave-neal'. Install: pip install dimod dwave-neal")
+        return SASolver(
+            num_sweeps=int(cfg.get("num_sweeps", 2000)),
+            beta_range=tuple(cfg["beta_range"]) if "beta_range" in cfg and cfg["beta_range"] is not None else None,
         )
 
     raise ValueError(f"Unknown solver kind: {kind}")

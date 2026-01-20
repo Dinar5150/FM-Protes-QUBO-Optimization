@@ -1,0 +1,9 @@
+numpy
+scipy
+pandas
+pyyaml
+scikit-learn
+torch
+matplotlib
+# Optional but recommended:
+# protes==0.3.12

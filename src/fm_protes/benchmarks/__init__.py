@@ -1,0 +1,2 @@
+from .maxcut_cardinality import MaxCutCardinalityBenchmark
+from .knapsack import KnapsackBenchmark

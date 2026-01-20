@@ -1,0 +1,7 @@
+{
+  "K": 20,
+  "d": 60,
+  "name": "maxcut_cardinality_d60_K20_seed1",
+  "seed": 1,
+  "weight_scale": 1.0
+}

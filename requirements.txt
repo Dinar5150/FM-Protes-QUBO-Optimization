@@ -7,5 +7,6 @@ torch
 matplotlib
 dimod
 dwave-neal
+dwave-tabu
 # Optional but recommended:
 # protes==0.3.12

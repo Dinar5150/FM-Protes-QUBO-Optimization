@@ -18,6 +18,7 @@ from .utils import ensure_dir, save_json, set_global_seed, topk_unique, select_d
 from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
 from .solvers.sa_solver import SASolver, has_sa
 from .solvers.exact_enum_solver import ExactEnumSolver
+from .solvers.tabu_solver import TabuSolver, has_tabu
 
 
 def build_benchmark(cfg: Dict[str, Any]):
@@ -79,6 +80,14 @@ def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
         return SASolver(
             num_sweeps=int(cfg.get("num_sweeps", 2000)),
             beta_range=tuple(cfg["beta_range"]) if "beta_range" in cfg and cfg["beta_range"] is not None else None,
+        )
+
+    if kind == "tabu":
+        if not has_tabu():
+            raise RuntimeError("solver.kind=tabu requires 'dimod' and 'dwave-tabu'. Install: pip install dimod dwave-tabu")
+        return TabuSolver(
+            timeout=int(cfg.get("timeout", 1000)),
+            tenure=int(cfg["tenure"]) if "tenure" in cfg and cfg["tenure"] is not None else None,
         )
 
     raise ValueError(f"Unknown solver kind: {kind}")

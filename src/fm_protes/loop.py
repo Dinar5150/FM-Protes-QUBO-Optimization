@@ -15,7 +15,7 @@ from .data import DataBuffer
 from .fm import FMTrainConfig, fm_predict_proba, fm_predict_reg, fm_to_qubo, train_fm_classifier, train_fm_regression
 from .surrogate import SurrogateObjective
 from .utils import ensure_dir, save_json, set_global_seed, topk_unique, select_diverse_topk, spearmanr_np
-from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
+from .solvers import CEMSolver, ProtesSolver, RandomSolver, RandomFeasibleSolver, has_protes
 
 
 def build_benchmark(cfg: Dict[str, Any]):
@@ -36,8 +36,9 @@ def build_benchmark(cfg: Dict[str, Any]):
     raise ValueError(f"Unknown benchmark kind: {kind}")
 
 
-def build_solver(cfg: Dict[str, Any]):
+def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
     kind = cfg["kind"].lower()
+
     if kind == "protes":
         if not has_protes():
             print("[warn] solver.kind=protes but protes is not installed; falling back to CEM")
@@ -63,6 +64,11 @@ def build_solver(cfg: Dict[str, Any]):
 
     if kind == "random":
         return RandomSolver(p_one=float(cfg.get("p_one", 0.5)))
+
+    if kind == "random_feasible":
+        if bench is None or not hasattr(bench, "sample_feasible"):
+            raise ValueError("solver.kind=random_feasible requires a benchmark with sample_feasible(rng, n).")
+        return RandomFeasibleSolver(sample_feasible=bench.sample_feasible)
 
     raise ValueError(f"Unknown solver kind: {kind}")
 
@@ -162,7 +168,7 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
     cand_cfg = config.get("candidate_selection", {})
     min_hamming = int(cand_cfg.get("min_hamming", 0))
 
-    solver = build_solver(config["solver"])
+    solver = build_solver(config["solver"], bench=bench, cons=cons)
 
     # Tracking best
     best_y = float("inf")

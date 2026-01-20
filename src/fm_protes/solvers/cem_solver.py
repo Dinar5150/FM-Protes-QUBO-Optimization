@@ -30,19 +30,38 @@ class CEMSolver(Solver):
         rng = np.random.default_rng(seed)
         p = np.full((d,), self.init_p, dtype=np.float64)
 
-        X_all = []
-        y_all = []
+        # bounded pool (best unique)
+        X_keep = np.zeros((0, d), dtype=np.int8)
+        y_keep = np.zeros((0,), dtype=np.float64)
 
         evals = 0
         it = 0
+        X_best = np.zeros((d,), dtype=np.int8)
+        y_best = float("inf")
+
         while evals < budget and it < self.n_iters:
             B = min(self.batch_size, budget - evals)
             X = (rng.random((B, d)) < p[None, :]).astype(np.int8)
             y = objective(X).astype(np.float64)
+            evals += int(B)
 
-            X_all.append(X)
-            y_all.append(y)
-            evals += B
+            # track best over all evaluations (even if pool is pruned later)
+            j = int(np.argmin(y)) if len(y) else 0
+            if len(y) and float(y[j]) < y_best:
+                y_best = float(y[j])
+                X_best = X[j].copy()
+
+            # merge into pool + prune
+            if len(X_keep) == 0:
+                X_keep, y_keep = X, y
+            else:
+                X_keep = np.concatenate([X_keep, X], axis=0)
+                y_keep = np.concatenate([y_keep, y], axis=0)
+
+            if pool_size is not None and int(pool_size) > 0:
+                cap = int(pool_size)
+                if len(X_keep) > 2 * cap:
+                    X_keep, y_keep = topk_unique(X_keep, y_keep, k=cap)
 
             # elite update
             elite_n = max(1, int(self.elite_frac * B))
@@ -54,21 +73,16 @@ class CEMSolver(Solver):
 
             it += 1
 
-        X_pool = np.concatenate(X_all, axis=0) if X_all else np.zeros((0, d), dtype=np.int8)
-        y_pool = np.concatenate(y_all, axis=0) if y_all else np.zeros((0,), dtype=np.float64)
+        # final prune
+        if pool_size is not None and int(pool_size) > 0 and len(X_keep) > int(pool_size):
+            X_pool, y_pool = topk_unique(X_keep, y_keep, k=int(pool_size))
+        else:
+            X_pool, y_pool = X_keep, y_keep
 
-        if pool_size is not None and int(pool_size) > 0 and len(X_pool) > int(pool_size):
-            X_pool, y_pool = topk_unique(X_pool, y_pool, k=int(pool_size))
-
-        idx = int(np.argmin(y_pool)) if len(y_pool) else 0
-        X_best = X_pool[idx].copy() if len(y_pool) else np.zeros((d,), dtype=np.int8)
-        y_best = float(y_pool[idx]) if len(y_pool) else float("inf")
-
-        # If pool_size is requested smaller than total evaluations, we keep best unique subset later in loop.
         return SolverResult(
             X_pool=X_pool,
             y_pool=y_pool,
             X_best=X_best,
-            y_best=y_best,
+            y_best=float(y_best),
             info={"evaluations": float(evals), "iters": float(it)},
         )

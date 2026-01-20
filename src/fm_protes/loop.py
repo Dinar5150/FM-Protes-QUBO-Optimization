@@ -15,7 +15,8 @@ from .data import DataBuffer
 from .fm import FMTrainConfig, fm_predict_proba, fm_predict_reg, fm_to_qubo, train_fm_classifier, train_fm_regression
 from .surrogate import SurrogateObjective
 from .utils import ensure_dir, save_json, set_global_seed, topk_unique, select_diverse_topk, spearmanr_np
-from .solvers import CEMSolver, ProtesSolver, RandomSolver, RandomFeasibleSolver, has_protes
+from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
+from .solvers.exact_enum_solver import ExactEnumSolver
 
 
 def build_benchmark(cfg: Dict[str, Any]):
@@ -65,10 +66,11 @@ def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
     if kind == "random":
         return RandomSolver(p_one=float(cfg.get("p_one", 0.5)))
 
-    if kind == "random_feasible":
-        if bench is None or not hasattr(bench, "sample_feasible"):
-            raise ValueError("solver.kind=random_feasible requires a benchmark with sample_feasible(rng, n).")
-        return RandomFeasibleSolver(sample_feasible=bench.sample_feasible)
+    if kind == "exact_enum":
+        return ExactEnumSolver(
+            max_d=int(cfg.get("max_d", 24)),
+            batch_eval=int(cfg.get("batch_eval", 8192)),
+        )
 
     raise ValueError(f"Unknown solver kind: {kind}")
 

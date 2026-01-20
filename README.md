@@ -53,6 +53,12 @@ python scripts/run_experiment.py --config configs/maxcut_cardinality.yaml
 python scripts/run_experiment.py --config configs/knapsack.yaml
 ```
 
+### One-hot groups synthetic QUBO (sum(x[G])=1 for each group)
+
+```bash
+python scripts/run_experiment.py --config configs/onehot_qubo.yaml
+```
+
 Outputs:
 - `results/<run_name>/history.csv` : per-iteration logs
 - `results/<run_name>/best.json`   : best feasible solution found

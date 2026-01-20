@@ -65,6 +65,37 @@ class CompositeConstraint(Constraint):
         return float(sum(c.violation(x) for c in self.constraints))
 
 
+@dataclass
+class OneHotGroupsConstraint(Constraint):
+    """Enforce one-hot in each group: for every G, sum_{i in G} x_i == 1."""
+
+    groups: List[np.ndarray]  # each group is a 1D array of indices
+
+    def __post_init__(self):
+        norm_groups: List[np.ndarray] = []
+        for g in self.groups:
+            gi = np.asarray(g, dtype=np.int64).reshape(-1)
+            if gi.size == 0:
+                raise ValueError("OneHotGroupsConstraint: empty group is not allowed")
+            norm_groups.append(gi)
+        self.groups = norm_groups
+
+    def is_feasible(self, x: np.ndarray) -> bool:
+        x = np.asarray(x, dtype=np.int8)
+        for g in self.groups:
+            if int(np.sum(x[g])) != 1:
+                return False
+        return True
+
+    def violation(self, x: np.ndarray) -> float:
+        x = np.asarray(x, dtype=np.int8)
+        v = 0.0
+        for g in self.groups:
+            s = float(np.sum(x[g]))
+            v += (s - 1.0) ** 2
+        return float(v)
+
+
 def batch_is_feasible(X: np.ndarray, cons: Optional[Constraint]) -> np.ndarray:
     if cons is None:
         return np.ones((len(X),), dtype=bool)

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from .benchmarks import KnapsackBenchmark, MaxCutCardinalityBenchmark
+from .benchmarks import KnapsackBenchmark, MaxCutCardinalityBenchmark, OneHotQUBOBenchmark
 from .constraints import Constraint, batch_is_feasible
 from .data import DataBuffer
 from .fm import FMTrainConfig, fm_predict_proba, fm_predict_reg, fm_to_qubo, train_fm_classifier, train_fm_regression
@@ -35,6 +35,13 @@ def build_benchmark(cfg: Dict[str, Any]):
             d=int(cfg.get("d", 200)),
             seed=int(cfg.get("seed", 0)),
             capacity_ratio=float(cfg.get("capacity_ratio", 0.35)),
+        )
+    if kind == "onehot_qubo":
+        return OneHotQUBOBenchmark(
+            group_sizes=cfg.get("group_sizes", [5, 5, 5, 5]),
+            seed=int(cfg.get("seed", 0)),
+            interaction_scale=float(cfg.get("interaction_scale", 1.0)),
+            planted_bias=float(cfg.get("planted_bias", 2.0)),
         )
     raise ValueError(f"Unknown benchmark kind: {kind}")
 

@@ -10,6 +10,9 @@ This repo is a **ready-to-run experiment template** for the iterative loop:
 
 It also includes a few baselines (Random feasible, CEM) and two benchmarks.
 
+Baselines also include SA/Tabu and a QBSOLV-style decomposition baseline (`solver.kind: qbsolv`).
+Note: SA/Tabu/QBSOLV are QUBO-only here (they do not support the feasibility classifier term, and only support quadratic penalties).
+
 ---
 
 ## Quickstart

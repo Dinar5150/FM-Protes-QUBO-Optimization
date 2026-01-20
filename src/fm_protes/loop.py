@@ -19,6 +19,7 @@ from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
 from .solvers.sa_solver import SASolver, has_sa
 from .solvers.exact_enum_solver import ExactEnumSolver
 from .solvers.tabu_solver import TabuSolver, has_tabu
+from .solvers.qbsolv_solver import QBSolvSolver, QBSolvConfig, has_qbsolv
 
 
 def build_benchmark(cfg: Dict[str, Any]):
@@ -96,6 +97,22 @@ def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
             timeout=int(cfg.get("timeout", 1000)),
             tenure=int(cfg["tenure"]) if "tenure" in cfg and cfg["tenure"] is not None else None,
         )
+
+    if kind == "qbsolv":
+        if not has_qbsolv():
+            raise RuntimeError("solver.kind=qbsolv requires 'dimod' and 'dwave-samplers'. Install: pip install dimod dwave-samplers")
+        qbcfg = QBSolvConfig(
+            subproblem_size=int(cfg.get("subproblem_size", 400)),
+            max_outer_iters=int(cfg.get("max_outer_iters", 50)),
+            max_no_improve=int(cfg.get("max_no_improve", 10)),
+            tol=float(cfg.get("tol", 0.0)),
+            sub_num_reads=int(cfg.get("sub_num_reads", 200)),
+            sub_num_sweeps=int(cfg.get("sub_num_sweeps", 1000)),
+            sub_beta_range=tuple(cfg["sub_beta_range"]) if cfg.get("sub_beta_range") is not None else None,
+            polish_with_steepest_descent=bool(cfg.get("polish_with_steepest_descent", True)),
+            candidates_per_subproblem=int(cfg.get("candidates_per_subproblem", 25)),
+        )
+        return QBSolvSolver(cfg=qbcfg)
 
     raise ValueError(f"Unknown solver kind: {kind}")
 

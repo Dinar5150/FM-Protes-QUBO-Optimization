@@ -1,3 +1,7 @@
+# Usage:
+#   python scripts/run_experiment.py --config configs/maxcut_cardinality.yaml
+#   python scripts/plot_history.py --history results/maxcut_cardinality_demo/history.csv --x oracle_calls
+
 run_name: maxcut_cardinality_demo
 
 seed: 0

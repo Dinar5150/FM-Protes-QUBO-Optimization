@@ -10,10 +10,10 @@ from ..constraints import CardinalityConstraint
 from ..utils import topk_unique
 
 try:
-    import dimod  # noqa: F401
-    from dwave_tabu import TabuSampler
+    import dimod
+    from tabu import TabuSampler
     _HAS_TABU = True
-except Exception:
+except ImportError:
     _HAS_TABU = False
     TabuSampler = None
 

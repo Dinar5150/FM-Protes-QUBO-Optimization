@@ -6,6 +6,7 @@ from typing import Optional
 import numpy as np
 
 from .base import ObjectiveFn, Solver, SolverResult
+from ..utils import topk_unique
 
 
 @dataclass
@@ -55,6 +56,9 @@ class CEMSolver(Solver):
 
         X_pool = np.concatenate(X_all, axis=0) if X_all else np.zeros((0, d), dtype=np.int8)
         y_pool = np.concatenate(y_all, axis=0) if y_all else np.zeros((0,), dtype=np.float64)
+
+        if pool_size is not None and int(pool_size) > 0 and len(X_pool) > int(pool_size):
+            X_pool, y_pool = topk_unique(X_pool, y_pool, k=int(pool_size))
 
         idx = int(np.argmin(y_pool)) if len(y_pool) else 0
         X_best = X_pool[idx].copy() if len(y_pool) else np.zeros((d,), dtype=np.int8)

@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 from .base import ObjectiveFn, Solver, SolverResult
+from ..utils import topk_unique
 
 try:
     from protes import protes as _protes
@@ -46,16 +47,35 @@ class ProtesSolver(Solver):
                 "(or switch solver.kind to 'cem')."
             )
 
-        X_log: List[np.ndarray] = []
-        y_log: List[np.ndarray] = []
         info: Dict[str, Any] = {}
 
+        # Keep a bounded pool (best unique) to avoid storing all samples when budgets get large.
+        X_keep = np.zeros((0, d), dtype=np.int8)
+        y_keep = np.zeros((0,), dtype=np.float64)
+        evals_total = 0
+
         def f_batch(I):
-            # I: jax array [B, d] with entries in {0,1} for binary mode (n=2)
+            nonlocal X_keep, y_keep, evals_total
             X = np.array(I, dtype=np.int8)
             y = objective(X).astype(np.float64)
-            X_log.append(X)
-            y_log.append(y)
+            evals_total += int(len(X))
+
+            if pool_size is not None and int(pool_size) > 0:
+                # merge + prune (keep a bit more before pruning to amortize)
+                if len(X_keep) == 0:
+                    X_keep, y_keep = X, y
+                else:
+                    X_keep = np.concatenate([X_keep, X], axis=0)
+                    y_keep = np.concatenate([y_keep, y], axis=0)
+
+                cap = int(pool_size)
+                if len(X_keep) > 2 * cap:
+                    X_keep, y_keep = topk_unique(X_keep, y_keep, k=cap)
+            else:
+                # store everything (original behavior)
+                X_keep = np.concatenate([X_keep, X], axis=0) if len(X_keep) else X
+                y_keep = np.concatenate([y_keep, y], axis=0) if len(y_keep) else y
+
             return y
 
         i_opt, y_opt = _protes(
@@ -73,20 +93,16 @@ class ProtesSolver(Solver):
             info=info,
         )
 
-        # Collect pool
-        if X_log:
-            X_pool = np.concatenate(X_log, axis=0)
-            y_pool = np.concatenate(y_log, axis=0)
+        # Final prune to pool_size (if requested)
+        if pool_size is not None and int(pool_size) > 0 and len(X_keep) > int(pool_size):
+            X_pool, y_pool = topk_unique(X_keep, y_keep, k=int(pool_size))
         else:
-            X_pool = np.zeros((0, d), dtype=np.int8)
-            y_pool = np.zeros((0,), dtype=np.float64)
+            X_pool, y_pool = X_keep, y_keep
 
-        # best index from return
         X_best = np.array(i_opt, dtype=np.int8).reshape((d,))
         y_best = float(y_opt)
 
-        # Some info keys depend on protes version; keep it flexible
-        out_info = {"evaluations": float(len(y_pool)), "returned_y": float(y_opt)}
+        out_info = {"evaluations": float(evals_total), "returned_y": float(y_opt)}
         for k, v in info.items():
             if isinstance(v, (int, float, np.number)):
                 out_info[f"protes_{k}"] = float(v)

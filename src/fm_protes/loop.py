@@ -12,9 +12,9 @@ import yaml
 from .benchmarks import KnapsackBenchmark, MaxCutCardinalityBenchmark
 from .constraints import Constraint, batch_is_feasible
 from .data import DataBuffer
-from .fm import FMTrainConfig, fm_predict_proba, fm_to_qubo, train_fm_classifier, train_fm_regression
+from .fm import FMTrainConfig, fm_predict_proba, fm_predict_reg, fm_to_qubo, train_fm_classifier, train_fm_regression
 from .surrogate import SurrogateObjective
-from .utils import ensure_dir, save_json, set_global_seed, topk_unique
+from .utils import ensure_dir, save_json, set_global_seed, topk_unique, select_diverse_topk, spearmanr_np
 from .solvers import CEMSolver, ProtesSolver, RandomSolver, has_protes
 
 
@@ -147,9 +147,20 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
     candidate_pool_k = int(config.get("candidate_pool_k", 500))  # top unique from solver pool
 
     rho = float(config.get("penalty", {}).get("rho", 0.0))
+    penalty_cfg = config.get("penalty", {})
+    rho_adapt = bool(penalty_cfg.get("adaptive", False))
+    rho_target = float(penalty_cfg.get("target_feasible_rate", 0.3))
+    rho_grow = float(penalty_cfg.get("grow", 2.0))
+    rho_shrink = float(penalty_cfg.get("shrink", 0.9))
+    rho_min = float(penalty_cfg.get("min_rho", 0.0))
+    rho_max = float(penalty_cfg.get("max_rho", 1e9))
+
     alpha = float(config.get("feasibility_term", {}).get("alpha", 0.0))
     use_clf = bool(config.get("feasibility_term", {}).get("enabled", False))
     min_clf_points = int(config.get("feasibility_term", {}).get("min_points", 200))
+
+    cand_cfg = config.get("candidate_selection", {})
+    min_hamming = int(cand_cfg.get("min_hamming", 0))
 
     solver = build_solver(config["solver"])
 
@@ -172,6 +183,19 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
             X_reg, y_reg, fm_reg_cfg, seed=seed + 1000 + it
         )
         Q, const = fm_to_qubo(fm_reg)
+
+        # Surrogate quality (cheap diagnostics on training set)
+        try:
+            y_hat = fm_predict_reg(fm_reg, X_reg).astype(np.float64)
+            ss_res = float(np.sum((y_reg - y_hat) ** 2))
+            ss_tot = float(np.sum((y_reg - float(np.mean(y_reg))) ** 2) + 1e-12)
+            reg_info = {
+                **reg_info,
+                "surrogate_r2_train": float(1.0 - ss_res / ss_tot),
+                "surrogate_spearman_train": float(spearmanr_np(y_reg, y_hat)),
+            }
+        except Exception:
+            pass
 
         # --- Train feasibility classifier (optional)
         p_feasible_fn = None
@@ -210,12 +234,25 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
             y_pool = surrogate(X_pool)
 
         X_top, y_top = topk_unique(X_pool, y_pool, k=candidate_pool_k)
-        X_query = X_top[:top_k] if len(X_top) >= top_k else X_top
+
+        # Diverse selection for oracle queries (optional)
+        if min_hamming > 0:
+            X_query, _ = select_diverse_topk(X_top, y_top, k=top_k, min_hamming=min_hamming)
+        else:
+            X_query = X_top[:top_k] if len(X_top) >= top_k else X_top
 
         # --- Query oracle (feasible only), always log feasibility
         feas_mask = batch_is_feasible(X_query, cons)
         n_feas = int(np.sum(feas_mask))
         n_infeas = int(len(X_query) - n_feas)
+        feas_rate = float(n_feas / max(1, len(X_query)))
+
+        # Optional adaptive penalty update (based on observed feasibility)
+        if rho_adapt and cons is not None:
+            if feas_rate < rho_target:
+                rho = min(rho_max, max(rho_min, rho * rho_grow))
+            else:
+                rho = min(rho_max, max(rho_min, rho * rho_shrink))
 
         # Add to classifier dataset
         for x, ok in zip(X_query, feas_mask):
@@ -245,6 +282,8 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
             "query_k": int(len(X_query)),
             "query_feasible": n_feas,
             "query_infeasible": n_infeas,
+            "query_feasible_rate": float(feas_rate),
+            "rho": float(rho),
             "best_y": best_y,
             "time_sec": dt,
             **reg_info,

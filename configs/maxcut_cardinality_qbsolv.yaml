@@ -1,0 +1,47 @@
+run_name: maxcut_cardinality_qbsolv
+
+seed: 0
+n_iters: 25
+top_k: 25
+solver_budget: 8000
+candidate_pool_k: 800
+
+benchmark:
+  kind: maxcut_cardinality
+  d: 60
+  K: 20
+  seed: 1
+  weight_scale: 1.0
+
+init_dataset:
+  mode: generate
+  n_feasible: 250
+  n_infeasible: 250
+
+fm_reg:
+  k: 32
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 250
+  batch_size: 256
+  patience: 30
+  device: cpu
+
+feasibility_term:
+  enabled: false
+  alpha: 0.0
+  min_points: 0
+
+penalty:
+  rho: 200.0
+
+solver:
+  kind: qbsolv
+  subproblem_size: 400
+  max_outer_iters: 50
+  max_no_improve: 10
+  tol: 0.0
+  sub_num_reads: 200
+  sub_num_sweeps: 1000
+  polish_with_steepest_descent: true
+  candidates_per_subproblem: 25

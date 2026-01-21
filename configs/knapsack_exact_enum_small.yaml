@@ -1,0 +1,50 @@
+run_name: knapsack_exact_enum_small
+
+# Exact enumeration is only feasible for small d.
+seed: 0
+n_iters: 10
+top_k: 25
+solver_budget: 200000
+candidate_pool_k: 2000
+
+benchmark:
+  kind: knapsack
+  d: 24
+  seed: 1
+  capacity_ratio: 0.35
+
+init_dataset:
+  mode: generate
+  n_feasible: 200
+  n_infeasible: 200
+
+fm_reg:
+  k: 16
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 200
+  batch_size: 256
+  patience: 25
+  device: cpu
+
+fm_clf:
+  k: 16
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 200
+  batch_size: 256
+  patience: 25
+  device: cpu
+
+penalty:
+  rho: 50.0
+
+feasibility_term:
+  enabled: true
+  alpha: 0.5
+  min_points: 200
+
+solver:
+  kind: exact_enum
+  max_d: 24
+  batch_eval: 8192

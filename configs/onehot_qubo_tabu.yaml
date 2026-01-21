@@ -1,0 +1,40 @@
+run_name: onehot_qubo_tabu
+
+seed: 0
+n_iters: 25
+top_k: 25
+solver_budget: 8000
+candidate_pool_k: 800
+
+benchmark:
+  kind: onehot_qubo
+  group_sizes: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+  seed: 1
+  interaction_scale: 1.0
+  planted_bias: 2.0
+
+init_dataset:
+  mode: generate
+  n_feasible: 300
+  n_infeasible: 300
+
+fm_reg:
+  k: 16
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 200
+  batch_size: 256
+  patience: 25
+  device: cpu
+
+feasibility_term:
+  enabled: false
+  alpha: 0.0
+  min_points: 0
+
+penalty:
+  rho: 200.0
+
+solver:
+  kind: tabu
+  timeout: 1000

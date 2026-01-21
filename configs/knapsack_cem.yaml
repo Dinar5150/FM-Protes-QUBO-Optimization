@@ -1,0 +1,51 @@
+run_name: knapsack_cem
+
+seed: 0
+n_iters: 25
+top_k: 25
+solver_budget: 8000
+candidate_pool_k: 800
+
+benchmark:
+  kind: knapsack
+  d: 200
+  seed: 1
+  capacity_ratio: 0.35
+
+init_dataset:
+  mode: generate
+  n_feasible: 300
+  n_infeasible: 300
+
+fm_reg:
+  k: 16
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 200
+  batch_size: 256
+  patience: 25
+  device: cpu
+
+fm_clf:
+  k: 16
+  lr: 0.02
+  weight_decay: 1.0e-4
+  epochs: 200
+  batch_size: 256
+  patience: 25
+  device: cpu
+
+penalty:
+  rho: 50.0
+
+feasibility_term:
+  enabled: true
+  alpha: 0.5
+  min_points: 200
+
+solver:
+  kind: cem
+  batch_size: 512
+  n_iters: 50
+  elite_frac: 0.1
+  lr: 0.7

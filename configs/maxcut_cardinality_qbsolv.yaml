@@ -1,4 +1,4 @@
-run_name: maxcut_cardinality_sa
+run_name: maxcut_cardinality_qbsolv
 
 seed: 0
 n_iters: 25
@@ -27,8 +27,6 @@ fm_reg:
   patience: 30
   device: cpu
 
-# QUBO-only solvers: classifier term is disabled automatically, but we
-# disable it here to keep logs clean.
 feasibility_term:
   enabled: false
   alpha: 0.0
@@ -38,5 +36,12 @@ penalty:
   rho: 200.0
 
 solver:
-  kind: sa
-  num_sweeps: 2000
+  kind: qbsolv
+  subproblem_size: 400
+  max_outer_iters: 50
+  max_no_improve: 10
+  tol: 0.0
+  sub_num_reads: 200
+  sub_num_sweeps: 1000
+  polish_with_steepest_descent: true
+  candidates_per_subproblem: 25

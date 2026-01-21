@@ -1,4 +1,4 @@
-run_name: onehot_qubo_demo
+run_name: onehot_qubo_sa
 
 seed: 0
 n_iters: 25
@@ -8,7 +8,7 @@ candidate_pool_k: 800
 
 benchmark:
   kind: onehot_qubo
-  group_sizes: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]   # d=50
+  group_sizes: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
   seed: 1
   interaction_scale: 1.0
   planted_bias: 2.0
@@ -27,28 +27,14 @@ fm_reg:
   patience: 25
   device: cpu
 
-fm_clf:
-  k: 16
-  lr: 0.02
-  weight_decay: 1.0e-4
-  epochs: 200
-  batch_size: 256
-  patience: 25
-  device: cpu
+feasibility_term:
+  enabled: false
+  alpha: 0.0
+  min_points: 0
 
 penalty:
   rho: 200.0
 
-feasibility_term:
-  enabled: true
-  alpha: 0.5
-  min_points: 200
-
 solver:
-  kind: protes
-  batch_size: 256
-  elite_size: 20
-  k_gd: 1
-  lr: 0.05
-  r: 5
-  log: false
+  kind: sa
+  num_sweeps: 2000

@@ -1,4 +1,4 @@
-run_name: onehot_qubo_demo
+run_name: maxcut_cardinality_random_feasible
 
 seed: 0
 n_iters: 25
@@ -7,24 +7,24 @@ solver_budget: 8000
 candidate_pool_k: 800
 
 benchmark:
-  kind: onehot_qubo
-  group_sizes: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]   # d=50
+  kind: maxcut_cardinality
+  d: 60
+  K: 20
   seed: 1
-  interaction_scale: 1.0
-  planted_bias: 2.0
+  weight_scale: 1.0
 
 init_dataset:
   mode: generate
-  n_feasible: 300
-  n_infeasible: 300
+  n_feasible: 250
+  n_infeasible: 250
 
 fm_reg:
-  k: 16
+  k: 32
   lr: 0.02
   weight_decay: 1.0e-4
-  epochs: 200
+  epochs: 250
   batch_size: 256
-  patience: 25
+  patience: 30
   device: cpu
 
 fm_clf:
@@ -33,7 +33,7 @@ fm_clf:
   weight_decay: 1.0e-4
   epochs: 200
   batch_size: 256
-  patience: 25
+  patience: 20
   device: cpu
 
 penalty:
@@ -41,14 +41,8 @@ penalty:
 
 feasibility_term:
   enabled: true
-  alpha: 0.5
+  alpha: 1.0
   min_points: 200
 
 solver:
-  kind: protes
-  batch_size: 256
-  elite_size: 20
-  k_gd: 1
-  lr: 0.05
-  r: 5
-  log: false
+  kind: random_feasible

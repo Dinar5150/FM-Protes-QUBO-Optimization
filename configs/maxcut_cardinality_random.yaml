@@ -1,4 +1,4 @@
-run_name: maxcut_cardinality_random_demo
+run_name: maxcut_cardinality_random
 
 seed: 0
 n_iters: 25

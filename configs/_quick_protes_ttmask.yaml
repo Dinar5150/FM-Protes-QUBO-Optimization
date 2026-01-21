@@ -1,0 +1,50 @@
+seed: 0
+n_iters: 1
+top_k: 5
+solver_budget: 200
+candidate_pool_k: 50
+benchmark:
+  kind: maxcut_cardinality
+  d: 20
+  K: 8
+  seed: 1
+init_dataset:
+  mode: generate
+  n_feasible: 50
+  n_infeasible: 50
+fm_reg:
+  k: 8
+  epochs: 5
+  batch_size: 64
+  patience: 5
+  lr: 0.05
+  device: cpu
+fm_clf:
+  k: 8
+  epochs: 5
+  batch_size: 64
+  patience: 5
+  lr: 0.05
+  device: cpu
+
+# Key change: enable TT hard-mask for PROTES.
+# Currently supported hard mask: CardinalityConstraint (sum(x)=K).
+constraint_handling:
+  hard: [cardinality]
+
+penalty:
+  rho: 50
+feasibility_term:
+  enabled: true
+  alpha: 0.5
+  min_points: 20
+
+solver:
+  kind: protes
+  tt_hard_mask: true
+  batch_size: 128
+  elite_size: 20
+  r: 5
+  lr: 0.05
+  k_gd: 1
+  log: false

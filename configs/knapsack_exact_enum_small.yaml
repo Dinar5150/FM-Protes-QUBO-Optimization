@@ -1,22 +1,22 @@
-run_name: onehot_qubo_demo
+run_name: knapsack_exact_enum_small
 
+# Exact enumeration is only feasible for small d.
 seed: 0
-n_iters: 25
+n_iters: 10
 top_k: 25
-solver_budget: 8000
-candidate_pool_k: 800
+solver_budget: 200000
+candidate_pool_k: 2000
 
 benchmark:
-  kind: onehot_qubo
-  group_sizes: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5]   # d=50
+  kind: knapsack
+  d: 24
   seed: 1
-  interaction_scale: 1.0
-  planted_bias: 2.0
+  capacity_ratio: 0.35
 
 init_dataset:
   mode: generate
-  n_feasible: 300
-  n_infeasible: 300
+  n_feasible: 200
+  n_infeasible: 200
 
 fm_reg:
   k: 16
@@ -37,7 +37,7 @@ fm_clf:
   device: cpu
 
 penalty:
-  rho: 200.0
+  rho: 50.0
 
 feasibility_term:
   enabled: true
@@ -45,10 +45,6 @@ feasibility_term:
   min_points: 200
 
 solver:
-  kind: protes
-  batch_size: 256
-  elite_size: 20
-  k_gd: 1
-  lr: 0.05
-  r: 5
-  log: false
+  kind: exact_enum
+  max_d: 24
+  batch_eval: 8192

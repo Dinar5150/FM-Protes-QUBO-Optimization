@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -22,7 +22,7 @@ class SurrogateObjective:
     const: float
     constraint: Optional[Constraint] = None
     rho: float = 0.0
-    p_feasible: Optional[callable] = None  # function X -> prob in (0,1)
+    p_feasible: Optional[Callable[[np.ndarray], np.ndarray]] = None  # function X -> prob in (0,1)
     alpha: float = 0.0
     eps: float = 1e-6
 

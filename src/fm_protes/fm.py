@@ -50,6 +50,9 @@ class FMTrainConfig:
     batch_size: int = 256
     patience: int = 20
     device: str = "cpu"
+    # Optional validation split. If >0, early stopping monitors validation loss.
+    val_split: float = 0.0
+    val_min_points: int = 10
 
 
 def _batch_iter(X: np.ndarray, y: np.ndarray, batch_size: int, rng: np.random.Generator):
@@ -59,6 +62,37 @@ def _batch_iter(X: np.ndarray, y: np.ndarray, batch_size: int, rng: np.random.Ge
     for s in range(0, n, batch_size):
         j = idx[s : s + batch_size]
         yield X[j], y[j]
+
+
+def _split_train_val(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    val_split: float,
+    val_min_points: int,
+    rng: np.random.Generator,
+) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    n = int(len(X))
+    if val_split <= 0.0:
+        return X, y, None, None
+    if n < 2:
+        return X, y, None, None
+
+    frac = float(val_split)
+    if not (0.0 < frac < 0.5):
+        # keep it conservative; avoid surprising huge val fractions
+        return X, y, None, None
+
+    n_val = int(round(frac * n))
+    n_val = max(int(val_min_points), n_val)
+    if n - n_val < 2:
+        return X, y, None, None
+
+    idx = np.arange(n)
+    rng.shuffle(idx)
+    val_idx = idx[:n_val]
+    tr_idx = idx[n_val:]
+    return X[tr_idx], y[tr_idx], X[val_idx], y[val_idx]
 
 
 def train_fm_regression(
@@ -82,27 +116,39 @@ def train_fm_regression(
     device = torch.device(cfg.device)
     model.to(device)
 
-    # Standardize targets for stability:
-    y_mean = float(np.mean(y))
-    y_std = float(np.std(y) + 1e-8)
+    X_tr, y_tr, X_val, y_val = _split_train_val(
+        X,
+        y,
+        val_split=float(cfg.val_split),
+        val_min_points=int(cfg.val_min_points),
+        rng=rng,
+    )
+
+    # Standardize targets for stability (fit on train split):
+    y_mean = float(np.mean(y_tr))
+    y_std = float(np.std(y_tr) + 1e-8)
     model.y_mean = y_mean
     model.y_std = y_std
-    y_s = (y - y_mean) / y_std
+    y_tr_s = (y_tr - y_mean) / y_std
+    y_val_s = (y_val - y_mean) / y_std if y_val is not None else None
 
-    X_t = torch.tensor(X, dtype=torch.float32, device=device)
-    y_t = torch.tensor(y_s, dtype=torch.float32, device=device)
+    # (kept for possible future full-batch usage)
+    _ = torch.tensor(X_tr, dtype=torch.float32, device=device)
+    _ = torch.tensor(y_tr_s, dtype=torch.float32, device=device)
 
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     loss_fn = nn.MSELoss()
 
     best_loss = float("inf")
+    best_train_loss = float("inf")
+    best_val_loss = float("inf")
     best_state = None
     bad = 0
 
     for epoch in range(cfg.epochs):
         model.train()
         epoch_loss = 0.0
-        for xb, yb in _batch_iter(X, y_s, cfg.batch_size, rng):
+        for xb, yb in _batch_iter(X_tr, y_tr_s, cfg.batch_size, rng):
             xb_t = torch.tensor(xb, dtype=torch.float32, device=device)
             yb_t = torch.tensor(yb, dtype=torch.float32, device=device)
 
@@ -114,11 +160,23 @@ def train_fm_regression(
 
             epoch_loss += float(loss.item()) * len(xb)
 
-        epoch_loss /= len(X)
+        epoch_loss /= len(X_tr)
 
-        # Simple early stopping on training loss (template-friendly)
-        if epoch_loss < best_loss - 1e-6:
-            best_loss = epoch_loss
+        # Validation loss (if enabled)
+        val_loss = None
+        if X_val is not None and y_val_s is not None and len(X_val) > 0:
+            model.eval()
+            with torch.no_grad():
+                xv_t = torch.tensor(X_val, dtype=torch.float32, device=device)
+                yv_t = torch.tensor(y_val_s, dtype=torch.float32, device=device)
+                pred_v = model(xv_t)
+                val_loss = float(loss_fn(pred_v, yv_t).item())
+
+        monitor = val_loss if val_loss is not None else epoch_loss
+        if monitor < best_loss - 1e-6:
+            best_loss = float(monitor)
+            best_train_loss = float(epoch_loss)
+            best_val_loss = float(val_loss) if val_loss is not None else float("nan")
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             bad = 0
         else:
@@ -129,7 +187,11 @@ def train_fm_regression(
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    return model, {"train_mse": best_loss}
+    info: Dict[str, float] = {"train_mse": float(best_train_loss)}
+    if X_val is not None:
+        info["val_mse"] = float(best_val_loss)
+    info["early_stop_monitor"] = float(best_loss)
+    return model, info
 
 
 def train_fm_classifier(
@@ -153,20 +215,31 @@ def train_fm_classifier(
     device = torch.device(cfg.device)
     model.to(device)
 
-    X_t = torch.tensor(X, dtype=torch.float32, device=device)
-    y_t = torch.tensor(y01.astype(np.float32), dtype=torch.float32, device=device)
+    X_tr, y_tr, X_val, y_val = _split_train_val(
+        X,
+        y01.astype(np.float32),
+        val_split=float(cfg.val_split),
+        val_min_points=int(cfg.val_min_points),
+        rng=rng,
+    )
+
+    # (kept for possible future full-batch usage)
+    _ = torch.tensor(X_tr, dtype=torch.float32, device=device)
+    _ = torch.tensor(y_tr.astype(np.float32), dtype=torch.float32, device=device)
 
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     loss_fn = nn.BCEWithLogitsLoss()
 
     best_loss = float("inf")
+    best_train_loss = float("inf")
+    best_val_loss = float("inf")
     best_state = None
     bad = 0
 
     for epoch in range(cfg.epochs):
         model.train()
         epoch_loss = 0.0
-        for xb, yb in _batch_iter(X, y01.astype(np.float32), cfg.batch_size, rng):
+        for xb, yb in _batch_iter(X_tr, y_tr.astype(np.float32), cfg.batch_size, rng):
             xb_t = torch.tensor(xb, dtype=torch.float32, device=device)
             yb_t = torch.tensor(yb, dtype=torch.float32, device=device)
 
@@ -178,10 +251,22 @@ def train_fm_classifier(
 
             epoch_loss += float(loss.item()) * len(xb)
 
-        epoch_loss /= len(X)
+        epoch_loss /= len(X_tr)
 
-        if epoch_loss < best_loss - 1e-6:
-            best_loss = epoch_loss
+        val_loss = None
+        if X_val is not None and y_val is not None and len(X_val) > 0:
+            model.eval()
+            with torch.no_grad():
+                xv_t = torch.tensor(X_val, dtype=torch.float32, device=device)
+                yv_t = torch.tensor(y_val.astype(np.float32), dtype=torch.float32, device=device)
+                logits_v = model(xv_t)
+                val_loss = float(loss_fn(logits_v, yv_t).item())
+
+        monitor = val_loss if val_loss is not None else epoch_loss
+        if monitor < best_loss - 1e-6:
+            best_loss = float(monitor)
+            best_train_loss = float(epoch_loss)
+            best_val_loss = float(val_loss) if val_loss is not None else float("nan")
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             bad = 0
         else:
@@ -192,7 +277,11 @@ def train_fm_classifier(
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    return model, {"train_bce": best_loss}
+    info: Dict[str, float] = {"train_bce": float(best_train_loss)}
+    if X_val is not None:
+        info["val_bce"] = float(best_val_loss)
+    info["early_stop_monitor"] = float(best_loss)
+    return model, info
 
 
 def fm_predict_reg(model: FactorizationMachine, X: np.ndarray) -> np.ndarray:
@@ -212,7 +301,14 @@ def fm_predict_proba(model: FactorizationMachine, X: np.ndarray) -> np.ndarray:
     with torch.no_grad():
         xt = torch.tensor(X, dtype=torch.float32, device=device)
         logits = model(xt).detach().cpu().numpy()
-    return 1.0 / (1.0 + np.exp(-logits))
+
+    # Numerically stable sigmoid to avoid overflow for large |logits|.
+    out = np.empty_like(logits, dtype=np.float64)
+    pos = logits >= 0
+    out[pos] = 1.0 / (1.0 + np.exp(-logits[pos]))
+    exp_x = np.exp(logits[~pos])
+    out[~pos] = exp_x / (1.0 + exp_x)
+    return out
 
 
 def fm_to_qubo(model: FactorizationMachine) -> Tuple[np.ndarray, float]:

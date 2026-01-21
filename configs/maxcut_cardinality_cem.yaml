@@ -1,8 +1,4 @@
-# Usage:
-#   python scripts/run_experiment.py --config configs/maxcut_cardinality_cem.yaml
-#   python scripts/plot_history.py --history results/maxcut_cardinality_cem_demo/history.csv --x oracle_calls
-
-run_name: maxcut_cardinality_cem_demo
+run_name: maxcut_cardinality_cem
 
 seed: 0
 n_iters: 25
@@ -54,4 +50,3 @@ solver:
   n_iters: 50
   elite_frac: 0.1
   lr: 0.7
-  init_p: 0.5

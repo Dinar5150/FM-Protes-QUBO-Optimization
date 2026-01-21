@@ -7,7 +7,7 @@ import numpy as np
 
 from .base import ObjectiveFn, Solver, SolverResult
 from ..constraints import CardinalityConstraint
-from ..utils import topk_unique
+from ..utils import topk_unique, try_add_quadratic_constraint_penalty_inplace
 
 try:
     import dimod  # noqa: F401
@@ -37,27 +37,6 @@ def _qubo_from_upper(Q: np.ndarray) -> Dict[Tuple[int, int], float]:
             if v:
                 qubo[(i, j)] = v
     return qubo
-
-
-def _add_cardinality_penalty_inplace(
-    qubo: Dict[Tuple[int, int], float],
-    *,
-    d: int,
-    K: int,
-    rho: float,
-) -> float:
-    # rho*(sum x - K)^2, where (sum x)^2 = sum x_i + 2*sum_{i<j} x_i x_j (binary)
-    lin = float(rho) * (1.0 - 2.0 * float(K))
-    for i in range(int(d)):
-        qubo[(i, i)] = float(qubo.get((i, i), 0.0) + lin)
-
-    quad = 2.0 * float(rho)
-    if quad:
-        for i in range(int(d)):
-            for j in range(i + 1, int(d)):
-                qubo[(i, j)] = float(qubo.get((i, j), 0.0) + quad)
-
-    return float(rho) * float(K) * float(K)
 
 
 @dataclass(frozen=True)
@@ -108,20 +87,21 @@ class QBSolvSolver(Solver):
 
         if Q is None:
             raise ValueError("QBSolvSolver requires objective.Q (expected SurrogateObjective).")
+
         if p_feasible is not None and alpha != 0.0:
-            raise RuntimeError("QBSolvSolver cannot include -alpha*log(p_feasible); disable feasibility_term for qbsolv.")
-        if constraint is not None and rho != 0.0 and not isinstance(constraint, CardinalityConstraint):
-            raise RuntimeError(
-                "QBSolvSolver only supports quadratic penalties in this repo. "
-                "Supported: CardinalityConstraint with rho*(sum-K)^2."
-            )
+            print("[warn] QBSolvSolver: ignoring feasibility term (-alpha*log p_feasible); QUBO-only baseline.")
 
         import dimod  # local import
 
         qubo = _qubo_from_upper(np.asarray(Q, dtype=np.float64))
         offset = float(const)
-        if isinstance(constraint, CardinalityConstraint) and rho != 0.0:
-            offset += _add_cardinality_penalty_inplace(qubo, d=int(d), K=int(constraint.K), rho=float(rho))
+
+        if constraint is not None and rho != 0.0:
+            added, ok = try_add_quadratic_constraint_penalty_inplace(qubo, constraint, d=int(d), rho=float(rho))
+            if ok:
+                offset += float(added)
+            else:
+                print("[warn] QBSolvSolver: constraint penalty is not quadratic/encodable; ignoring constraint in the solver.")
 
         bqm = dimod.BinaryQuadraticModel.from_qubo(qubo, offset=offset)
 

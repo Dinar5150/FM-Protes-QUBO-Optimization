@@ -7,7 +7,7 @@ import numpy as np
 
 from .base import ObjectiveFn, Solver, SolverResult
 from ..constraints import CardinalityConstraint
-from ..utils import topk_unique
+from ..utils import topk_unique, try_add_quadratic_constraint_penalty_inplace
 
 try:
     import dimod
@@ -40,27 +40,6 @@ def _qubo_from_upper(Q: np.ndarray) -> Dict[Tuple[int, int], float]:
     return qubo
 
 
-def _add_cardinality_penalty_inplace(
-    qubo: Dict[Tuple[int, int], float],
-    *,
-    d: int,
-    K: int,
-    rho: float,
-) -> float:
-    # rho*(sum x - K)^2 where (sum x)^2 = sum x_i + 2*sum_{i<j} x_i x_j for binary
-    lin = float(rho) * (1.0 - 2.0 * float(K))
-    for i in range(int(d)):
-        qubo[(i, i)] = float(qubo.get((i, i), 0.0) + lin)
-
-    quad = 2.0 * float(rho)
-    if quad != 0.0:
-        for i in range(int(d)):
-            for j in range(i + 1, int(d)):
-                qubo[(i, j)] = float(qubo.get((i, j), 0.0) + quad)
-
-    return float(rho) * float(K) * float(K)
-
-
 @dataclass
 class TabuSolver(Solver):
     """Tabu search baseline using dwave-tabu.
@@ -89,20 +68,17 @@ class TabuSolver(Solver):
             raise ValueError("TabuSolver requires an objective with attribute 'Q' (expected SurrogateObjective).")
 
         if p_feasible is not None and alpha != 0.0:
-            raise RuntimeError("TabuSolver cannot include -alpha*log(p_feasible); disable feasibility_term or use another solver.")
+            print("[warn] TabuSolver: ignoring feasibility term (-alpha*log p_feasible); QUBO-only baseline.")
 
         qubo = _qubo_from_upper(np.asarray(Q, dtype=np.float64))
         offset = float(const)
 
         if constraint is not None and rho != 0.0:
-            if isinstance(constraint, CardinalityConstraint):
-                offset += _add_cardinality_penalty_inplace(qubo, d=int(d), K=int(constraint.K), rho=float(rho))
+            added, ok = try_add_quadratic_constraint_penalty_inplace(qubo, constraint, d=int(d), rho=float(rho))
+            if ok:
+                offset += float(added)
             else:
-                raise RuntimeError(
-                    "TabuSolver only supports quadratic penalty constraints. "
-                    "Supported: CardinalityConstraint with rho*(sum-K)^2. "
-                    "Use CEM/PROTES for non-quadratic violations."
-                )
+                print("[warn] TabuSolver: constraint penalty is not quadratic/encodable; ignoring constraint in the solver.")
 
         import dimod  # local import after dependency check
 

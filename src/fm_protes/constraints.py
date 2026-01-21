@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Type
 
 import numpy as np
 
@@ -49,6 +49,7 @@ class LinearInequalityConstraint(Constraint):
     def violation(self, x: np.ndarray) -> float:
         Ax = self.A @ x.astype(np.float64)
         v = np.maximum(0.0, Ax - self.b)
+        # guide-consistent hinge penalty (nonnegative; 0 if feasible)
         return float(np.sum(v))
 
 
@@ -106,3 +107,48 @@ def batch_violation(X: np.ndarray, cons: Optional[Constraint]) -> np.ndarray:
     if cons is None:
         return np.zeros((len(X),), dtype=np.float64)
     return np.array([cons.violation(x) for x in X], dtype=np.float64)
+
+
+def flatten_constraints(cons: Optional[Constraint]) -> List[Constraint]:
+    """Flatten CompositeConstraint into a plain list.
+
+    This is useful for hybrid constraint handling (hard-mask some constraints,
+    penalize others).
+    """
+    if cons is None:
+        return []
+    if isinstance(cons, CompositeConstraint):
+        out: List[Constraint] = []
+        for c in cons.constraints:
+            out.extend(flatten_constraints(c))
+        return out
+    return [cons]
+
+
+def make_constraint(constraints: Sequence[Constraint]) -> Optional[Constraint]:
+    cs = [c for c in constraints if c is not None]
+    if len(cs) == 0:
+        return None
+    if len(cs) == 1:
+        return cs[0]
+    return CompositeConstraint(list(cs))
+
+
+def split_constraints(
+    cons: Optional[Constraint],
+    *,
+    hard_types: Sequence[Type[Constraint]],
+) -> Tuple[Optional[Constraint], Optional[Constraint]]:
+    """Split a (possibly composite) constraint into hard + soft parts.
+
+    Hard constraints are those whose type is in hard_types.
+    """
+    hard_t = tuple(hard_types)
+    hard_list: List[Constraint] = []
+    soft_list: List[Constraint] = []
+    for c in flatten_constraints(cons):
+        if hard_t and isinstance(c, hard_t):
+            hard_list.append(c)
+        else:
+            soft_list.append(c)
+    return make_constraint(hard_list), make_constraint(soft_list)

@@ -301,7 +301,14 @@ def fm_predict_proba(model: FactorizationMachine, X: np.ndarray) -> np.ndarray:
     with torch.no_grad():
         xt = torch.tensor(X, dtype=torch.float32, device=device)
         logits = model(xt).detach().cpu().numpy()
-    return 1.0 / (1.0 + np.exp(-logits))
+
+    # Numerically stable sigmoid to avoid overflow for large |logits|.
+    out = np.empty_like(logits, dtype=np.float64)
+    pos = logits >= 0
+    out[pos] = 1.0 / (1.0 + np.exp(-logits[pos]))
+    exp_x = np.exp(logits[~pos])
+    out[~pos] = exp_x / (1.0 + exp_x)
+    return out
 
 
 def fm_to_qubo(model: FactorizationMachine) -> Tuple[np.ndarray, float]:

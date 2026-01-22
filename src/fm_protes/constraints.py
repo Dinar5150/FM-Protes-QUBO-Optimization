@@ -48,7 +48,7 @@ class LinearInequalityConstraint(Constraint):
 
     def violation(self, x: np.ndarray) -> float:
         Ax = self.A @ x.astype(np.float64)
-        v = np.maximum(0.0, Ax - self.b)
+        v = np.maximum(0.0, Ax - self.b)**2
         # guide-consistent hinge penalty (nonnegative; 0 if feasible)
         return float(np.sum(v))
 

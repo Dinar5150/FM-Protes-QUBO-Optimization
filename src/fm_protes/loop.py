@@ -85,14 +85,25 @@ def build_solver(cfg: Dict[str, Any], *, bench=None, cons=None):
             if bool(cfg.get("tt_hard_mask", False)) and bench is not None and cons is not None:
                 d = int(bench.n_vars())
 
-                # Currently supported: exact CardinalityConstraint (sum(x)=K)
+                # Supported: exact CardinalityConstraint (sum(x)=K)
+                # and OneHotGroupsConstraint if groups form a contiguous partition.
                 card = ProtesSolver._extract_cardinality(cons)
                 if card is not None:
                     P, desc = ProtesSolver.build_tt_mask_cardinality_P(d=d, K=int(card.K))
                     solver.P_init = P
                     solver.P_init_desc = desc
                 else:
-                    print("[warn] solver.kind=protes tt_hard_mask=true but no supported hard constraint was found (currently supports CardinalityConstraint only).")
+                    oh = ProtesSolver._extract_onehot_groups(cons)
+                    if oh is not None:
+                        sizes = ProtesSolver._onehot_groups_are_contiguous_partition(oh.groups, d=d)
+                        if sizes is not None:
+                            P, desc = ProtesSolver.build_tt_mask_onehot_groups_P(group_sizes=sizes)
+                            solver.P_init = P
+                            solver.P_init_desc = desc
+                        else:
+                            print("[warn] solver.kind=protes tt_hard_mask=true but OneHotGroupsConstraint is not a contiguous partition; cannot build TT mask.")
+                    else:
+                        print("[warn] solver.kind=protes tt_hard_mask=true but no supported hard constraint was found (supports CardinalityConstraint and contiguous OneHotGroupsConstraint).")
 
             return solver
 

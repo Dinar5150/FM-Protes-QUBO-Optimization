@@ -8,7 +8,7 @@ import numpy as np
 from .base import ObjectiveFn, Solver, SolverResult
 from ..utils import topk_unique
 
-from ..constraints import CardinalityConstraint, CompositeConstraint, Constraint
+from ..constraints import CardinalityConstraint, CompositeConstraint, Constraint, OneHotGroupsConstraint
 
 try:
     from protes import protes as _protes
@@ -107,6 +107,130 @@ class ProtesSolver(Solver):
                 Yr[s, 1, 0] = 1.0
 
         desc = f"tt_mask_cardinality(sum(x)=K, K={K})"
+        return [Yl, Ym, Yr], desc
+
+    @staticmethod
+    def _extract_onehot_groups(cons: Optional[Constraint]) -> Optional[OneHotGroupsConstraint]:
+        if cons is None:
+            return None
+        if isinstance(cons, OneHotGroupsConstraint):
+            return cons
+        if isinstance(cons, CompositeConstraint):
+            for c in cons.constraints:
+                out = ProtesSolver._extract_onehot_groups(c)
+                if out is not None:
+                    return out
+        return None
+
+    @staticmethod
+    def _onehot_groups_are_contiguous_partition(groups: List[np.ndarray], *, d: int) -> Optional[List[int]]:
+        """Return group sizes if groups form a contiguous partition 0..d-1.
+
+        This is required for a simple sequential TT automaton mask.
+        """
+        if d <= 0:
+            return None
+        # Sort groups by their first index.
+        gs = [np.asarray(g, dtype=np.int64).reshape(-1) for g in groups]
+        if any(g.size == 0 for g in gs):
+            return None
+        gs.sort(key=lambda a: int(np.min(a)))
+
+        off = 0
+        sizes: List[int] = []
+        seen = set()
+        for g in gs:
+            # No overlaps
+            for idx in g.tolist():
+                if idx in seen:
+                    return None
+                seen.add(int(idx))
+
+            s = int(g.size)
+            expected = np.arange(off, off + s, dtype=np.int64)
+            if not np.array_equal(g, expected):
+                return None
+            sizes.append(s)
+            off += s
+        if off != int(d):
+            return None
+        return sizes
+
+    @staticmethod
+    def build_tt_mask_onehot_groups_P(*, group_sizes: List[int]) -> Tuple[Any, str]:
+        """Build an exact TT feasibility indicator for one-hot groups.
+
+        Constraint: for each group G, sum_{i in G} x_i == 1.
+
+        Uses a small DFA with 3 states tracking ones count within the current group:
+          0: seen 0 ones
+          1: seen exactly 1 one
+          2: invalid (>=2 ones or failed group end check)
+
+        At the end of each group we require state==1 and reset to state 0.
+
+        Returns PROTES' special P format [Yl, Ym, Yr].
+        """
+        sizes = [int(s) for s in group_sizes]
+        if any(s <= 0 for s in sizes):
+            raise ValueError("group_sizes must be positive")
+        d = int(sum(sizes))
+        if d < 2:
+            raise ValueError("TT mask requires d>=2")
+
+        n = 2
+        r = 3  # DFA states
+
+        # Mark last position of each group.
+        last_pos = np.zeros((d,), dtype=bool)
+        off = 0
+        for s in sizes:
+            last_pos[off + s - 1] = True
+            off += s
+
+        def trans_internal(state: int, bit: int) -> int:
+            if state == 2:
+                return 2
+            if state == 0:
+                return 1 if bit == 1 else 0
+            # state == 1
+            return 2 if bit == 1 else 1
+
+        def trans(state: int, bit: int, *, is_group_end: bool) -> int:
+            s2 = trans_internal(state, bit)
+            if not is_group_end:
+                return s2
+            # group end: must have exactly one then reset to 0
+            return 0 if s2 == 1 else 2
+
+        # First core: (1, 2, r)
+        Yl = np.zeros((1, n, r), dtype=np.float32)
+        for bit in (0, 1):
+            ns = trans(0, bit, is_group_end=bool(last_pos[0]))
+            Yl[0, bit, ns] = 1.0
+
+        # Middle cores: (d-2, r, 2, r)
+        if d > 2:
+            Ym = np.zeros((d - 2, r, n, r), dtype=np.float32)
+            for t in range(1, d - 1):
+                is_end = bool(last_pos[t])
+                for s in range(r):
+                    for bit in (0, 1):
+                        ns = trans(s, bit, is_group_end=is_end)
+                        Ym[t - 1, s, bit, ns] = 1.0
+        else:
+            Ym = np.zeros((0, r, n, r), dtype=np.float32)
+
+        # Last core: (r, 2, 1)
+        Yr = np.zeros((r, n, 1), dtype=np.float32)
+        is_end = bool(last_pos[d - 1])
+        for s in range(r):
+            for bit in (0, 1):
+                ns = trans(s, bit, is_group_end=is_end)
+                if ns == 0:
+                    Yr[s, bit, 0] = 1.0
+
+        desc = f"tt_mask_onehot_groups(group_sizes={sizes})"
         return [Yl, Ym, Yr], desc
 
     def solve(self, objective: ObjectiveFn, d: int, budget: int, pool_size: int, seed: int) -> SolverResult:

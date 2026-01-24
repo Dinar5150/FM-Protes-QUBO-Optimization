@@ -375,7 +375,12 @@ def run_experiment(config: Dict[str, Any], out_dir: str | Path) -> Path:
                 X_top = X_top[hard_mask]
                 y_top = y_top[hard_mask]
             else:
-                print("[warn] Hard constraints removed all candidates from solver pool; proceeding without hard-mask for this iteration.")
+                print("[warn] Hard constraints removed all candidates from solver pool; falling back to benchmark.sample_feasible for this iteration.")
+                try:
+                    X_top = np.asarray(bench.sample_feasible(rng, candidate_pool_k), dtype=np.int8)
+                    y_top = surrogate_rank(X_top).astype(np.float64)
+                except Exception as e:
+                    print(f"[warn] benchmark.sample_feasible fallback failed ({e}); proceeding without hard-mask for this iteration.")
 
         # Diverse selection for *proposals* (may be infeasible)
         if min_hamming > 0:

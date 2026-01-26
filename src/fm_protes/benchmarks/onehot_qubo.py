@@ -7,7 +7,7 @@ import numpy as np
 
 from ..constraints import Constraint, OneHotGroupsConstraint
 from ..qubo import qubo_energy
-
+from src.fm_protes.QuboMaker import DynamicMatrix,add_equality,make_symetric
 
 def _build_groups(group_sizes: Sequence[int]) -> List[np.ndarray]:
     groups: List[np.ndarray] = []
@@ -85,3 +85,23 @@ class OneHotQUBOBenchmark:
             "interaction_scale": float(self.interaction_scale),
             "planted_bias": float(self.planted_bias),
         }
+    #for testing
+    def print_results(self,x):
+        print(x)
+        W=0
+        cnt=0
+        for i in range(self.d):
+            cnt+=x[i]
+            for j in range(i+1,self.d):
+                if x[i]==x[j]:
+                    continue
+                W+=self.W[i][j]
+        print('Weight:',W,'Vertices Count:',cnt)
+    def get_qubo(self):
+        groups=self.groups
+        n=self.d
+        Q=DynamicMatrix(n)
+
+        for g in groups:
+            add_equality(Q,np.ones(len(g)),g,1)
+        return Q.get_qubo()

@@ -7,7 +7,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from ..constraints import CardinalityConstraint, Constraint
-
+from src.fm_protes.QuboMaker import DynamicMatrix,add_equality,make_symetric
 
 @dataclass
 class MaxCutCardinalityBenchmark:
@@ -23,11 +23,11 @@ class MaxCutCardinalityBenchmark:
     d: int
     K: int
     seed: int = 0
-    weight_scale: float = 1.0
+    weight_scale: float = 1000.0
 
     def __post_init__(self):
         rng = np.random.default_rng(self.seed)
-        W = rng.random((self.d, self.d)) * self.weight_scale
+        W = rng.random((self.d, self.d)) * self.weight_scale # wrong scaling can force wrong answers (you may want to scale to 1000)
         W = np.triu(W, 1)
         W = W + W.T
         np.fill_diagonal(W, 0.0)
@@ -82,3 +82,31 @@ class MaxCutCardinalityBenchmark:
         if best_x is None:
             return None
         return best_x, float(best_y)
+    
+    #for testing
+    def print_results(self,x):
+        print(x)
+        W=0
+        cnt=int(0)
+        for i in range(self.d):
+            cnt+=int(x[i])
+            for j in range(i+1,self.d):
+                if x[i]==x[j]:
+                    continue
+                W+=self.W[i][j]
+        print('Weight:',W,'Vertices Count:',cnt)
+    def get_qubo(self):
+        n=self.d
+        W=self.W
+        K=self.K
+        Q=DynamicMatrix(n)
+        
+        add_equality(Q,np.ones(n),[i for i in range(n)],K,1e5)
+        for i in range(n):
+            for j in range(i+1,n):
+                #-(x(i)*(1-x(j))+x(j)*(1-x(i)))*W[i][j]
+                Q[i,j]+=2*W[i][j]
+                Q[i,i]-=W[i][j]
+                Q[j,j]-=W[i][j]
+        make_symetric(Q)
+        return Q.get_qubo()

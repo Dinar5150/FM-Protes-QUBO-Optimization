@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from ..constraints import Constraint, LinearInequalityConstraint
-
+from src.fm_protes.QuboMaker import DynamicMatrix,add_equality,make_symetric
 
 @dataclass
 class KnapsackBenchmark:
@@ -55,3 +55,25 @@ class KnapsackBenchmark:
 
     def info(self) -> Dict:
         return {"name": self.name, "d": self.d, "seed": self.seed, "capacity": self.capacity, "capacity_ratio": self.capacity_ratio}
+    
+    #for testing
+    def print_results(self,x):
+        print(x)
+        W,V=0,0
+        for i in range(self.d):
+            W+=x[i]*self.weights[i]
+            V+=x[i]*self.values[i]
+        print('capacity:',self.capacity,'Weight:',W,'Value:',V)
+    
+    def get_qubo(self):
+        n,Weight,Value,capacity=self.d,self.weights,self.values,self.capacity
+        Q=DynamicMatrix(n)
+        #add objective function
+        for i in range(n):
+            Q[i,i]-=Value[i]
+        #Constraint: sum w_i x_i <= capacity.
+        b=int(np.log2(capacity+1)+1)
+        Q.increment(b)
+        #(sum w_i x_i +b_i*2**i-capacity)**2
+        add_equality(Q,[Weight[i] for i in range(n)]+[2**i for i in range(b)],[i for i in range(Q.n)],capacity)
+        return Q.get_qubo()

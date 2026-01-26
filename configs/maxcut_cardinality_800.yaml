@@ -2,7 +2,7 @@
 #   python scripts/run_experiment.py --config configs/maxcut_cardinality.yaml
 #   python scripts/plot_history.py --history results/maxcut_cardinality_demo/history.csv --x oracle_calls
 
-run_name: maxcut_cardinality_demo
+run_name: maxcut_cardinality_800
 
 seed: 0
 n_iters: 25
@@ -12,8 +12,8 @@ candidate_pool_k: 800     # how many top unique surrogate candidates to consider
 
 benchmark:
   kind: maxcut_cardinality
-  d: 60
-  K: 20
+  d: 800
+  K: 500
   seed: 1
   weight_scale: 1000.0
 
